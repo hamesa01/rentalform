@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Servis Giriş Formu</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  /* Telegram'ın açık/koyu tema renklerini kullanır */
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --yazi: var(--tg-theme-text-color, #1f2937);
+    --soluk: var(--tg-theme-hint-color, #6b7280);
+    --vurgu: var(--tg-theme-button-color, #1f3b63);
+    --vurgu-yazi: var(--tg-theme-button-text-color, #ffffff);
+    --kutu: var(--tg-theme-secondary-bg-color, #eef2f7);
+    --hata: #d93025;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 18px 16px 28px; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--yazi); }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.alt { margin: 0 0 14px; color: var(--soluk); font-size: 13px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--soluk); margin: 14px 0 6px; }
+  label .zorunlu { color: var(--hata); }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  input, select, textarea { display: block; min-width: 0; max-width: 100%; width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 10px;
+                            border: 1px solid transparent; background: var(--kutu); color: var(--yazi); }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--vurgu); }
+  textarea { min-height: 84px; resize: vertical; }
+  #plaka, #ikamePlaka { text-transform: uppercase; letter-spacing: 1px; }
+  .secim { display: flex; gap: 8px; }
+  .secim button { flex: 1; min-width: 0; padding: 12px; border-radius: 10px; border: 1px solid transparent; font-size: 15px;
+                  background: var(--kutu); color: var(--yazi); }
+  .secim button.secili { background: var(--vurgu); color: var(--vurgu-yazi); }
+  .uyari { color: var(--hata); font-size: 13px; margin-top: 6px; min-height: 0; }
+  .gizli { display: none; }
+  .oneri { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .oneri button { padding: 8px 12px; border-radius: 16px; border: 1px solid var(--vurgu); background: transparent;
+                  color: var(--yazi); font-size: 15px; letter-spacing: 1px; }
+  .bilgi { color: var(--soluk); font-size: 13px; margin-top: 6px; }
+  #gonder { display: none; width: 100%; margin-top: 20px; padding: 14px; border: 0; border-radius: 12px;
+            font-size: 16px; background: var(--vurgu); color: var(--vurgu-yazi); }
+</style>
+</head>
+<body>
+<h1>Servis Giriş Formu</h1>
+<p class="alt">Lütfen tüm alanları doldurarak <b>Kaydet</b> düğmesine basınız.</p>
+
+<label for="plaka">Araç plakası <span class="zorunlu">*</span></label>
+<input id="plaka" placeholder="Plaka yazınız" autocomplete="off" maxlength="12">
+<div class="oneri" id="oneri"></div>
+<div class="bilgi" id="b_plaka"></div>
+<div class="uyari" id="u_plaka"></div>
+
+<label for="birim">Bağlı olduğu birim <span class="zorunlu">*</span></label>
+<select id="birim"></select>
+<input id="birimDiger" class="gizli" placeholder="Birim adını yazınız" maxlength="60" style="margin-top:8px">
+<div class="uyari" id="u_birim"></div>
+
+<label for="neden">Servis nedeni <span class="zorunlu">*</span></label>
+<select id="neden"></select>
+<div class="uyari" id="u_neden"></div>
+
+<label for="tarih">Servise giriş tarihi <span class="zorunlu">*</span></label>
+<input type="date" id="tarih">
+<div class="uyari" id="u_tarih"></div>
+
+<label for="aciklama">Açıklama <span class="zorunlu gizli" id="aciklamaZorunlu">*</span></label>
+<textarea id="aciklama" maxlength="500" placeholder="Arıza / hasar bilgisi, servis yeri vb."></textarea>
+<div class="uyari" id="u_aciklama"></div>
+
+<label>İkame araç verildi mi? <span class="zorunlu">*</span></label>
+<div class="secim">
+  <button type="button" data-ikame="evet">Evet</button>
+  <button type="button" data-ikame="hayir" class="secili">Hayır</button>
+</div>
+<div id="ikameAlan" class="gizli">
+  <label for="ikamePlaka">İkame aracın plakası <span class="zorunlu">*</span></label>
+  <input id="ikamePlaka" placeholder="01 XYZ 456" autocomplete="off" maxlength="12">
+  <div class="uyari" id="u_ikame"></div>
+</div>
+
+<button id="gonder" type="button">Kaydet</button>
+
+<script>
+  // Veriler adresin # kısmında gelir (sunucuya hiç gönderilmez); Telegram kendi parametrelerini ekleyebilir
+  function parametreler() {
+    const p = new URLSearchParams(location.search);
+    const h = location.hash.replace(/^#/, "").replace(/\?/g, "&");
+    for (const [k, v] of new URLSearchParams(h)) if (!p.has(k)) p.set(k, v);
+    return p;
+  }
+  // Bot, listeleri ve (hata sonrası) önceki değerleri #d=<JSON> ile gönderir:
+  // {"birimler":[...], "nedenler":[...], "zorunlu":[...], "onceki":{...}}
+  const tg0 = window.Telegram && Telegram.WebApp;
+  // Telegram içinde açıldıysa platform bilinir (menü düğmesiyle açılınca initData boş gelir, ona bakılmaz)
+  const tg = tg0 && tg0.platform && tg0.platform !== "unknown" ? tg0 : null;
+  const q = parametreler();
+  let d = {};
+  try { d = JSON.parse(q.get("d") || "{}"); } catch (e) { d = {}; }
+  const filo = (q.get("f") || "").split(",").filter(Boolean);  // filo plakaları (liste tam değil: elle giriş de açık)
+  const birimler = d.birimler || [], nedenler = d.nedenler || [], zorunlu = d.zorunlu || [];
+  const DIGER = "Diğer (listede yok)";
+  const $ = id => document.getElementById(id);
+  const iso = x => new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const bugun = iso(new Date());
+  // Türk plakası: il kodu 01–81 + 1–3 harf + 2–4 rakam (botla aynı kural)
+  const PLAKA = /^(0[1-9]|[1-7]\d|8[01])[A-Z]{1,3}\d{2,4}$/;
+  const plakaDuzelt = s => s.toLocaleUpperCase("tr-TR").replace(/[^0-9A-Z]/g, "");
+
+  function secenekler(sel, liste, ilk) {
+    sel.innerHTML = "";
+    const o = document.createElement("option"); o.value = ""; o.textContent = ilk; o.disabled = true; o.selected = true;
+    sel.appendChild(o);
+    for (const x of liste) { const e = document.createElement("option"); e.value = e.textContent = x; sel.appendChild(e); }
+  }
+  secenekler($("birim"), birimler.concat([DIGER]), "Birim seçiniz");
+  secenekler($("neden"), nedenler, "Servis nedeni seçiniz");
+  $("tarih").max = bugun; $("tarih").value = bugun;
+
+  let ikame = "hayir";
+  document.querySelectorAll(".secim button").forEach(b => b.onclick = () => {
+    ikame = b.dataset.ikame;
+    document.querySelectorAll(".secim button").forEach(x => x.classList.toggle("secili", x === b));
+    $("ikameAlan").classList.toggle("gizli", ikame !== "evet");
+  });
+  $("birim").onchange = () => $("birimDiger").classList.toggle("gizli", $("birim").value !== DIGER);
+  $("neden").onchange = () => $("aciklamaZorunlu").classList.toggle("gizli", !zorunlu.includes($("neden").value));
+
+  // Plakanın bir kısmı (ör. son rakamlar) yazılınca filodan eşleşen plakalar seçilebilir
+  function plakaOner() {
+    const p = plakaDuzelt($("plaka").value), kutu = $("oneri");
+    kutu.innerHTML = "";
+    $("b_plaka").textContent = "";
+    if (!filo.length || p.length < 2) return;
+    if (filo.includes(p)) return;
+    const es = filo.filter(x => x.includes(p)).slice(0, 8);
+    for (const x of es) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = x;
+      b.onclick = () => { $("plaka").value = x; plakaOner(); $("u_plaka").textContent = ""; };
+      kutu.appendChild(b);
+    }
+    if (!es.length && PLAKA.test(p)) $("b_plaka").textContent = "Bu plaka filo listesinde yok; elle girilen plaka olarak kaydedilecektir.";
+    else if (es.length) $("b_plaka").textContent = "Filodan aracı seçiniz" + (PLAKA.test(p) ? " veya yazdığınız plakayla devam ediniz." : ".");
+  }
+  $("plaka").addEventListener("input", plakaOner);
+
+  // Hata sonrası yeniden açılışta önceki değerler doldurulur
+  const o = d.onceki || {};
+  if (o.plaka) $("plaka").value = o.plaka;
+  if (o.birim) {
+    if (birimler.includes(o.birim)) $("birim").value = o.birim;
+    else { $("birim").value = DIGER; $("birimDiger").value = o.birim; }
+    $("birim").onchange();
+  }
+  if (o.neden) { $("neden").value = o.neden; $("neden").onchange(); }
+  if (o.tarih) $("tarih").value = o.tarih;
+  if (o.aciklama) $("aciklama").value = o.aciklama;
+  if (o.ikame_plaka) { document.querySelector('[data-ikame="evet"]').click(); $("ikamePlaka").value = o.ikame_plaka; }
+
+  function kontrol() {
+    document.querySelectorAll(".uyari").forEach(u => u.textContent = "");
+    let ok = true;
+    const hata = (id, m) => { $(id).textContent = m; ok = false; };
+    const plaka = plakaDuzelt($("plaka").value);
+    if (!PLAKA.test(plaka)) hata("u_plaka", "Geçerli bir plaka giriniz (örn: 01 ABC 123).");
+    const birim = $("birim").value === DIGER ? $("birimDiger").value.trim() : $("birim").value;
+    if (!birim) hata("u_birim", "Birim seçiniz.");
+    const neden = $("neden").value;
+    if (!neden) hata("u_neden", "Servis nedeni seçiniz.");
+    const tarih = $("tarih").value;
+    if (!tarih) hata("u_tarih", "Tarih seçiniz.");
+    else if (tarih > bugun) hata("u_tarih", "İleri bir tarih seçilemez.");
+    const aciklama = $("aciklama").value.trim();
+    if (zorunlu.includes(neden) && !aciklama) hata("u_aciklama", neden + " kaydında açıklama zorunludur.");
+    let ikamePlaka = "";
+    if (ikame === "evet") {
+      ikamePlaka = plakaDuzelt($("ikamePlaka").value);
+      if (!PLAKA.test(ikamePlaka)) hata("u_ikame", "Geçerli bir ikame plakası giriniz.");
+      else if (ikamePlaka === plaka) hata("u_ikame", "İkame plakası, servise giren araçla aynı olamaz.");
+    }
+    if (!ok) { const ilk = [...document.querySelectorAll(".uyari")].find(u => u.textContent); ilk && ilk.scrollIntoView({block: "center"}); }
+    return ok ? { tur: "giris", plaka, birim, neden, tarih, aciklama, ikame_plaka: ikamePlaka } : null;
+  }
+
+  function gonder() {
+    const veri = kontrol();
+    if (!veri) { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred("error"); return; }
+    const yolla = () => tg.sendData(JSON.stringify(veri));
+    if (!tg) { alert("Bu form Telegram içinden açılmalıdır."); return; }
+    tg.showConfirm(veri.plaka + " plakalı aracın servis girişi kaydedilsin mi?", ok => { if (ok) yolla(); });
+  }
+
+  if (tg) {
+    tg.ready(); tg.expand();
+    tg.MainButton.setText("Kaydet").show().onClick(gonder);
+  } else {
+    $("gonder").style.display = "block"; $("gonder").onclick = gonder;
+  }
+</script>
+</body>
+</html>

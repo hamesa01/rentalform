@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Tarih Seçimi</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  /* Telegram'ın açık/koyu tema renklerini kullanır */
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --yazi: var(--tg-theme-text-color, #1f2937);
+    --soluk: var(--tg-theme-hint-color, #6b7280);
+    --vurgu: var(--tg-theme-button-color, #1f3b63);
+    --vurgu-yazi: var(--tg-theme-button-text-color, #ffffff);
+    --kutu: var(--tg-theme-secondary-bg-color, #eef2f7);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px 16px; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--yazi); }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.alt { margin: 0 0 20px; color: var(--soluk); font-size: 14px; }
+  label { display: block; font-size: 14px; color: var(--soluk); margin: 14px 0 6px; }
+  input[type=date] { width: 100%; font-size: 20px; padding: 14px 12px; border-radius: 12px;
+                     border: 1px solid transparent; background: var(--kutu); color: var(--yazi); }
+  input[type=date]:focus { outline: 2px solid var(--vurgu); }
+  #hata { color: #d93025; font-size: 14px; min-height: 20px; margin-top: 12px; }
+  #gonder { display: none; width: 100%; margin-top: 16px; padding: 14px; border: 0; border-radius: 12px;
+            font-size: 16px; background: var(--vurgu); color: var(--vurgu-yazi); }
+</style>
+</head>
+<body>
+<h1 id="baslik">Tarih seçiniz</h1>
+<p class="alt" id="altyazi">Lütfen tarih alanına dokunarak takvimden tarihi seçiniz.</p>
+
+<label for="t1" id="e1">Tarih</label>
+<input type="date" id="t1">
+
+<div id="ikinci" hidden>
+  <label for="t2">Bitiş tarihi</label>
+  <input type="date" id="t2">
+</div>
+
+<div id="hata"></div>
+<button id="gonder" type="button">Seç</button>
+
+<script>
+  // Veriler adresin # kısmında gelir (sunucuya hiç gönderilmez); Telegram kendi parametrelerini ekleyebilir
+  function parametreler() {
+    const p = new URLSearchParams(location.search);
+    const h = location.hash.replace(/^#/, "").replace(/\?/g, "&");
+    for (const [k, v] of new URLSearchParams(h)) if (!p.has(k)) p.set(k, v);
+    return p;
+  }
+  // Parametreler: ?min=YYYY-MM-DD (en erken tarih), &mod=aralik (rapor için başlangıç + bitiş), &baslik=...
+  const tg = window.Telegram && Telegram.WebApp;
+  const q = parametreler();
+  const aralik = q.get("mod") === "aralik";
+  const enErken = q.get("min") || "";
+  const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const tr = s => s.split("-").reverse().join(".");
+  const bugun = iso(new Date());
+  const t1 = document.getElementById("t1"), t2 = document.getElementById("t2");
+  const hata = document.getElementById("hata");
+
+  if (q.get("baslik")) document.getElementById("baslik").textContent = q.get("baslik");
+  for (const t of [t1, t2]) { t.max = bugun; if (enErken) t.min = enErken; }
+  if (aralik) {
+    document.getElementById("ikinci").hidden = false;
+    document.getElementById("e1").textContent = "Başlangıç tarihi";
+    document.getElementById("altyazi").textContent = "Raporun başlangıç ve bitiş tarihlerini seçiniz.";
+    t2.value = bugun;
+  } else {
+    t1.value = bugun;
+  }
+
+  function kontrol() {
+    hata.textContent = "";
+    if (!t1.value || (aralik && !t2.value)) return false;
+    for (const t of aralik ? [t1, t2] : [t1]) {
+      if (t.value > bugun) { hata.textContent = "İleri bir tarih seçilemez."; return false; }
+      if (enErken && t.value < enErken) { hata.textContent = "En erken " + tr(enErken) + " seçilebilir."; return false; }
+    }
+    if (aralik && t1.value > t2.value) { hata.textContent = "Başlangıç, bitişten sonra olamaz."; return false; }
+    return true;
+  }
+
+  function gonder() {
+    if (!kontrol()) return;
+    const veri = aralik ? tr(t1.value) + " " + tr(t2.value) : tr(t1.value);
+    if (tg && tg.initData !== undefined) tg.sendData(veri); // bota "05.10.2026" (veya aralık) olarak gider
+    else hata.textContent = "Bu sayfa Telegram içinden açılmalıdır. Seçilen: " + veri;
+  }
+  t1.onchange = t2.onchange = kontrol;
+
+  if (tg) {
+    tg.ready(); tg.expand();
+    tg.MainButton.setText("Seç").show().onClick(gonder);
+  } else {
+    const b = document.getElementById("gonder"); b.style.display = "block"; b.onclick = gonder;
+  }
+</script>
+</body>
+</html>

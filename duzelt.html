@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Kayıt Düzeltme Formu</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  /* Telegram'ın açık/koyu tema renklerini kullanır */
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --yazi: var(--tg-theme-text-color, #1f2937);
+    --soluk: var(--tg-theme-hint-color, #6b7280);
+    --vurgu: var(--tg-theme-button-color, #1f3b63);
+    --vurgu-yazi: var(--tg-theme-button-text-color, #ffffff);
+    --kutu: var(--tg-theme-secondary-bg-color, #eef2f7);
+    --hata: #d93025;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 18px 16px 28px; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--yazi); }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.alt { margin: 0 0 14px; color: var(--soluk); font-size: 13px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--soluk); margin: 14px 0 6px; }
+  label .zorunlu { color: var(--hata); }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  input, select, textarea { display: block; min-width: 0; max-width: 100%; width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 10px;
+                            border: 1px solid transparent; background: var(--kutu); color: var(--yazi); }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--vurgu); }
+  textarea { min-height: 84px; resize: vertical; }
+  #plaka, #ikamePlaka { text-transform: uppercase; letter-spacing: 1px; }
+  .secim { display: flex; gap: 8px; }
+  .secim button { flex: 1; min-width: 0; padding: 12px; border-radius: 10px; border: 1px solid transparent; font-size: 15px;
+                  background: var(--kutu); color: var(--yazi); }
+  .secim button.secili { background: var(--vurgu); color: var(--vurgu-yazi); }
+  .uyari { color: var(--hata); font-size: 13px; margin-top: 6px; min-height: 0; }
+  .gizli { display: none; }
+  .oneri { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .oneri button { padding: 8px 12px; border-radius: 16px; border: 1px solid var(--vurgu); background: transparent;
+                  color: var(--yazi); font-size: 15px; letter-spacing: 1px; }
+  .bilgi { color: var(--soluk); font-size: 13px; margin-top: 6px; }
+  #gonder { display: none; width: 100%; margin-top: 20px; padding: 14px; border: 0; border-radius: 12px;
+            font-size: 16px; background: var(--vurgu); color: var(--vurgu-yazi); }
+  #temizleSatir:not(.gizli) { display: flex; align-items: center; gap: 8px; font-weight: 400; margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>Kayıt Düzeltme Formu</h1>
+<p class="alt">Lütfen kaydı ve düzeltilecek bilgiyi seçip yeni değeri girerek <b>Kaydet</b> düğmesine basınız.</p>
+
+<label for="kayit">Kayıt <span class="zorunlu">*</span></label>
+<select id="kayit"></select>
+<div class="uyari" id="u_kayit"></div>
+
+<label for="alan">Düzeltilecek bilgi <span class="zorunlu">*</span></label>
+<select id="alan"></select>
+<div class="bilgi" id="mevcut"></div>
+<div class="uyari" id="u_alan"></div>
+
+<div id="degerAlan" class="gizli">
+  <label id="degerBaslik">Yeni değer <span class="zorunlu">*</span></label>
+  <input id="metin" class="gizli" autocomplete="off" maxlength="12" placeholder="Plaka yazınız">
+  <textarea id="aciklama" class="gizli" maxlength="500" placeholder="Yeni açıklama"></textarea>
+  <select id="liste" class="gizli"></select>
+  <input id="birimDiger" class="gizli" placeholder="Birim adını yazınız" maxlength="60" style="margin-top:8px">
+  <input type="date" id="tarih" class="gizli">
+  <label id="temizleSatir" class="gizli">
+    <input type="checkbox" id="temizle" style="width:auto"> <span id="temizleYazi"></span>
+  </label>
+  <div class="uyari" id="u_deger"></div>
+</div>
+
+<button id="gonder" type="button">Kaydet</button>
+
+<script>
+  // Veriler adresin # kısmında gelir (sunucuya hiç gönderilmez); Telegram kendi parametrelerini ekleyebilir
+  function parametreler() {
+    const p = new URLSearchParams(location.search);
+    const h = location.hash.replace(/^#/, "").replace(/\?/g, "&");
+    for (const [k, v] of new URLSearchParams(h)) if (!p.has(k)) p.set(k, v);
+    return p;
+  }
+  // Bot listeleri #d=<JSON> ile gönderir:
+  // {"birimler":[...], "nedenler":[...], "zorunlu":[...],
+  //  "k":[[no, plaka, birimNo|metin, nedenNo, giris, cikis, ikamePlaka, ikameTarihi], ...]}  (tarihler YYYY-MM-DD, yoksa "")
+  // Seçim bota JSON olarak gider: {"tur":"duzelt","kayit":no,"alan":"...","deger":"..."}  ("-" = temizle)
+  const tg0 = window.Telegram && Telegram.WebApp;
+  // Telegram içinde açıldıysa platform bilinir (menü düğmesiyle açılınca initData boş gelir, ona bakılmaz)
+  const tg = tg0 && tg0.platform && tg0.platform !== "unknown" ? tg0 : null;
+  const q = parametreler();
+  let d = {};
+  try { d = JSON.parse(q.get("d") || "{}"); } catch (e) { d = {}; }
+  const birimler = d.birimler || [], nedenler = d.nedenler || [], zorunlu = d.zorunlu || [], kayitlar = d.k || [];
+  const DIGER = "Diğer (listede yok)";
+  const $ = id => document.getElementById(id);
+  const iso = x => new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const tr = s => s ? s.split("-").reverse().join(".") : "-";
+  const bugun = iso(new Date());
+  const PLAKA = /^(0[1-9]|[1-7][0-9]|8[01])[A-Z]{1,3}[0-9]{2,4}$/;
+  const plakaDuzelt = s => s.toLocaleUpperCase("tr-TR").replace(/[^0-9A-Z]/g, "");
+  const ad = (liste, v) => typeof v === "number" ? (liste[v] || "-") : (v || "-");
+  const ALANLAR = ["Plaka", "Birim", "Servis nedeni", "Açıklama", "Giriş tarihi", "Çıkış tarihi", "İkame plaka", "İkame tarihi"];
+
+  function secenekler(sel, liste, ilk) {
+    sel.innerHTML = "";
+    const o = document.createElement("option"); o.value = ""; o.textContent = ilk; o.disabled = true; o.selected = true;
+    sel.appendChild(o);
+    for (const [v, t] of liste) { const e = document.createElement("option"); e.value = v; e.textContent = t; sel.appendChild(e); }
+  }
+  const no2 = n => String(n).padStart(2, "0");
+  secenekler($("kayit"), kayitlar.map(k => [k[0], no2(k[0]) + " – " + k[1] + " (giriş " + tr(k[4]) + ", " + (k[5] ? "çıktı" : "serviste") + ")"]),
+             kayitlar.length ? "Kayıt seçiniz" : "Düzeltilebilecek kayıt yok");
+  secenekler($("alan"), ALANLAR.map(a => [a, a]), "Bilgi seçiniz");
+
+  const kayit = () => kayitlar.find(k => String(k[0]) === $("kayit").value);
+  function mevcutDeger(k, a) {
+    if (!k || !a) return "";
+    return { "Plaka": k[1], "Birim": ad(birimler, k[2]), "Servis nedeni": ad(nedenler, k[3]), "Açıklama": "(mevcut açıklama kayıtta görünür)",
+             "Giriş tarihi": tr(k[4]), "Çıkış tarihi": k[5] ? tr(k[5]) : "Serviste", "İkame plaka": k[6] || "Verilmedi",
+             "İkame tarihi": tr(k[7]) }[a];
+  }
+
+  function alanGoster() {
+    const k = kayit(), a = $("alan").value;
+    $("mevcut").textContent = k && a ? "Mevcut değer: " + mevcutDeger(k, a) : "";
+    ["metin", "aciklama", "liste", "birimDiger", "tarih", "temizleSatir"].forEach(i => $(i).classList.add("gizli"));
+    $("temizle").checked = false; $("u_deger").textContent = "";
+    $("degerAlan").classList.toggle("gizli", !(k && a));
+    if (!k || !a) return;
+    if (a === "Plaka" || a === "İkame plaka") { $("metin").classList.remove("gizli"); $("metin").value = ""; }
+    if (a === "Açıklama") { $("aciklama").classList.remove("gizli"); $("aciklama").value = ""; }
+    if (a === "Birim") { secenekler($("liste"), birimler.concat([DIGER]).map(b => [b, b]), "Birim seçiniz"); $("liste").classList.remove("gizli"); }
+    if (a === "Servis nedeni") { secenekler($("liste"), nedenler.map(n => [n, n]), "Servis nedeni seçiniz"); $("liste").classList.remove("gizli"); }
+    if (a.endsWith("tarihi")) {
+      const t = $("tarih"); t.classList.remove("gizli"); t.max = bugun;
+      t.min = a === "Giriş tarihi" ? "" : k[4];
+      t.value = (a === "Giriş tarihi" ? k[4] : a === "Çıkış tarihi" ? k[5] : k[7]) || bugun;
+    }
+    const temizle = { "Açıklama": "Açıklamayı boş bırak", "Çıkış tarihi": "Çıkışı sil (araç tekrar serviste görünür)",
+                      "İkame plaka": "İkame kaydını kaldır" }[a];
+    if (temizle) { $("temizleYazi").textContent = temizle; $("temizleSatir").classList.remove("gizli"); }
+  }
+  $("kayit").onchange = alanGoster;
+  $("alan").onchange = alanGoster;
+  $("liste").onchange = () => $("birimDiger").classList.toggle("gizli", $("liste").value !== DIGER);
+
+  function kontrol() {
+    ["u_kayit", "u_alan", "u_deger"].forEach(i => $(i).textContent = "");
+    const k = kayit(), a = $("alan").value;
+    if (!k) { $("u_kayit").textContent = "Lütfen kaydı seçiniz."; return null; }
+    if (!a) { $("u_alan").textContent = "Lütfen düzeltilecek bilgiyi seçiniz."; return null; }
+    const hata = m => { $("u_deger").textContent = m; return null; };
+    let deger;
+    if ($("temizle").checked) {
+      if (a === "Açıklama" && zorunlu.includes(ad(nedenler, k[3]))) return hata(ad(nedenler, k[3]) + " kaydında açıklama boş bırakılamaz.");
+      deger = "-";
+    } else if (a === "Plaka" || a === "İkame plaka") {
+      deger = plakaDuzelt($("metin").value);
+      if (!PLAKA.test(deger)) return hata("Geçerli bir plaka giriniz (örn: 01 ABC 123).");
+    } else if (a === "Açıklama") {
+      deger = $("aciklama").value.trim();
+      if (!deger) return hata("Yeni açıklamayı yazınız veya 'Açıklamayı boş bırak' seçeneğini işaretleyiniz.");
+    } else if (a === "Birim") {
+      deger = $("liste").value === DIGER ? $("birimDiger").value.trim() : $("liste").value;
+      if (!deger) return hata("Lütfen birimi seçiniz.");
+    } else if (a === "Servis nedeni") {
+      deger = $("liste").value;
+      if (!deger) return hata("Lütfen servis nedenini seçiniz.");
+    } else {
+      const t = $("tarih").value;
+      if (!t || t > bugun) return hata("Geçerli bir tarih seçiniz (ileri tarih seçilemez).");
+      if (a !== "Giriş tarihi" && t < k[4]) return hata("Tarih, servise giriş tarihinden (" + tr(k[4]) + ") önce olamaz.");
+      deger = tr(t);
+    }
+    return { tur: "duzelt", kayit: k[0], alan: a, deger };
+  }
+
+  function gonder() {
+    const veri = kontrol();
+    if (!veri) { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred("error"); return; }
+    if (!tg) { alert("Bu form Telegram içinden açılmalıdır."); return; }
+    const yeni = veri.deger === "-" ? "boş / kaldırılacak" : veri.deger;
+    tg.showConfirm("Kayıt " + no2(veri.kayit) + " – " + veri.alan + ": " + yeni + "\nDüzeltme kaydedilsin mi?",
+                   ok => { if (ok) tg.sendData(JSON.stringify(veri)); });
+  }
+
+  if (tg) {
+    tg.ready(); tg.expand();
+    tg.MainButton.setText("Kaydet").show().onClick(gonder);
+  } else {
+    $("gonder").style.display = "block"; $("gonder").onclick = gonder;
+  }
+</script>
+</body>
+</html>
