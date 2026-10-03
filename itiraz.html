@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>İtiraz Formu</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  /* Telegram'ın açık/koyu tema renklerini kullanır */
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --yazi: var(--tg-theme-text-color, #1f2937);
+    --soluk: var(--tg-theme-hint-color, #6b7280);
+    --vurgu: var(--tg-theme-button-color, #1f3b63);
+    --vurgu-yazi: var(--tg-theme-button-text-color, #ffffff);
+    --kutu: var(--tg-theme-secondary-bg-color, #eef2f7);
+    --hata: #d93025;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 18px 16px 28px; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--yazi); }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.alt { margin: 0 0 14px; color: var(--soluk); font-size: 13px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--soluk); margin: 14px 0 6px; }
+  label .zorunlu { color: var(--hata); }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  input, select, textarea { display: block; min-width: 0; max-width: 100%; width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 10px;
+                            border: 1px solid transparent; background: var(--kutu); color: var(--yazi); }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--vurgu); }
+  textarea { min-height: 84px; resize: vertical; }
+  #plaka, #ikamePlaka { text-transform: uppercase; letter-spacing: 1px; }
+  .secim { display: flex; gap: 8px; }
+  .secim button { flex: 1; min-width: 0; padding: 12px; border-radius: 10px; border: 1px solid transparent; font-size: 15px;
+                  background: var(--kutu); color: var(--yazi); }
+  .secim button.secili { background: var(--vurgu); color: var(--vurgu-yazi); }
+  .uyari { color: var(--hata); font-size: 13px; margin-top: 6px; min-height: 0; }
+  .gizli { display: none; }
+  .oneri { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .oneri button { padding: 8px 12px; border-radius: 16px; border: 1px solid var(--vurgu); background: transparent;
+                  color: var(--yazi); font-size: 15px; letter-spacing: 1px; }
+  .bilgi { color: var(--soluk); font-size: 13px; margin-top: 6px; }
+  #gonder { display: none; width: 100%; margin-top: 20px; padding: 14px; border: 0; border-radius: 12px;
+            font-size: 16px; background: var(--vurgu); color: var(--vurgu-yazi); }
+  #ekSatir { display: flex; align-items: center; gap: 8px; font-weight: 400; margin-top: 14px; }
+</style>
+</head>
+<body>
+<h1>İtiraz Formu</h1>
+<p class="alt">Lütfen itiraz ettiğiniz kaydı ve konuyu seçip açıklamanızı yazarak <b>Gönder</b> düğmesine basınız.</p>
+
+<label for="filtre">Kayıt <span class="zorunlu">*</span></label>
+<input id="filtre" placeholder="Listeyi daraltmak için plaka veya kayıt no yazınız" maxlength="12" autocomplete="off">
+<select id="kayit" size="6" style="margin-top:8px"></select>
+<div class="bilgi" id="bilgi"></div>
+<div class="uyari" id="u_kayit"></div>
+
+<label for="konu">İtiraz konusu <span class="zorunlu">*</span></label>
+<select id="konu"></select>
+<div class="uyari" id="u_konu"></div>
+
+<label for="aciklama">Açıklama <span class="zorunlu">*</span></label>
+<textarea id="aciklama" maxlength="1000" placeholder="Doğru bilgiyi de yazınız. Örn: Araç 12.09.2026'da teslim edildi."></textarea>
+<div class="uyari" id="u_aciklama"></div>
+
+<label id="ekSatir">
+  <input type="checkbox" id="ek" style="width:auto"> Fotoğraf / belge ekleyeceğim (gönderdikten sonra sohbette istenir)
+</label>
+
+<button id="gonder" type="button">Gönder</button>
+
+<script>
+  // Veriler adresin # kısmında gelir (sunucuya hiç gönderilmez); Telegram kendi parametrelerini ekleyebilir
+  function parametreler() {
+    const p = new URLSearchParams(location.search);
+    const h = location.hash.replace(/^#/, "").replace(/\?/g, "&");
+    for (const [k, v] of new URLSearchParams(h)) if (!p.has(k)) p.set(k, v);
+    return p;
+  }
+  // Bot #d=<JSON> ile gönderir: {"konular":[...], "k":[[no, plaka, giris, cikis], ...]} (tarihler YYYY-MM-DD, yoksa "")
+  // Seçim bota JSON olarak gider: {"tur":"itiraz","kayit":no,"konu":"...","aciklama":"...","ek":true|false}
+  const tg0 = window.Telegram && Telegram.WebApp;
+  // Telegram içinde açıldıysa platform bilinir (menü düğmesiyle açılınca initData boş gelir, ona bakılmaz)
+  const tg = tg0 && tg0.platform && tg0.platform !== "unknown" ? tg0 : null;
+  const $ = id => document.getElementById(id);
+  let d = {};
+  try { d = JSON.parse(parametreler().get("d") || "{}"); } catch (e) { d = {}; }
+  const kayitlar = d.k || [], konular = d.konular || [];
+  const tr = s => s ? s.split("-").reverse().join(".") : "-";
+  const no2 = n => String(n).padStart(2, "0");
+  const etiket = k => no2(k[0]) + " – " + k[1] + " (giriş " + tr(k[2]) + ", " + (k[3] ? "çıkış " + tr(k[3]) : "serviste") + ")";
+
+  const konuSel = $("konu");
+  const ilk = document.createElement("option"); ilk.value = ""; ilk.textContent = "Konu seçiniz"; ilk.disabled = true; ilk.selected = true;
+  konuSel.appendChild(ilk);
+  for (const k of konular) { const o = document.createElement("option"); o.value = o.textContent = k; konuSel.appendChild(o); }
+
+  function listele() {
+    const f = $("filtre").value.toLocaleUpperCase("tr-TR").replace(/[^0-9A-Z]/g, ""), sel = $("kayit"), once = sel.value;
+    sel.innerHTML = "";
+    const es = kayitlar.filter(k => !f || k[1].includes(f) || no2(k[0]) === f.padStart(2, "0"));
+    for (const k of es) { const o = document.createElement("option"); o.value = k[0]; o.textContent = etiket(k); sel.appendChild(o); }
+    if (es.some(k => String(k[0]) === once)) sel.value = once;
+    if (!es.length) { const o = document.createElement("option"); o.disabled = true; o.textContent = kayitlar.length ? "Eşleşen kayıt yok" : "İtiraz edilebilecek kayıt yok"; sel.appendChild(o); }
+    bilgi();
+  }
+  function bilgi() {
+    const k = kayitlar.find(x => String(x[0]) === $("kayit").value);
+    $("bilgi").textContent = k ? "Seçilen: " + etiket(k) : "";
+    $("u_kayit").textContent = "";
+  }
+  $("filtre").addEventListener("input", listele);
+  $("kayit").onchange = bilgi;
+  listele();
+
+  function kontrol() {
+    ["u_kayit", "u_konu", "u_aciklama"].forEach(i => $(i).textContent = "");
+    const k = kayitlar.find(x => String(x[0]) === $("kayit").value), konu = konuSel.value, aciklama = $("aciklama").value.trim();
+    let ok = true;
+    if (!k) { $("u_kayit").textContent = "Lütfen itiraz ettiğiniz kaydı seçiniz."; ok = false; }
+    if (!konu) { $("u_konu").textContent = "Lütfen itiraz konusunu seçiniz."; ok = false; }
+    if (aciklama.length < 3) { $("u_aciklama").textContent = "Açıklama zorunludur."; ok = false; }
+    return ok ? { tur: "itiraz", kayit: k[0], konu, aciklama, ek: $("ek").checked } : null;
+  }
+
+  function gonder() {
+    const veri = kontrol();
+    if (!veri) { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred("error"); return; }
+    if (!tg) { alert("Bu form Telegram içinden açılmalıdır."); return; }
+    tg.showConfirm("Kayıt " + no2(veri.kayit) + " için itiraz gönderilsin mi?\nKonu: " + veri.konu,
+                   ok => { if (ok) tg.sendData(JSON.stringify(veri)); });
+  }
+
+  if (tg) {
+    tg.ready(); tg.expand();
+    tg.MainButton.setText("Gönder").show().onClick(gonder);
+  } else {
+    $("gonder").style.display = "block"; $("gonder").onclick = gonder;
+  }
+</script>
+</body>
+</html>

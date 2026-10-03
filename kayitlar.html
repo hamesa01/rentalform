@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Kayıtlar</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  /* Telegram'ın açık/koyu tema renklerini kullanır */
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --yazi: var(--tg-theme-text-color, #1f2937);
+    --soluk: var(--tg-theme-hint-color, #6b7280);
+    --vurgu: var(--tg-theme-button-color, #1f3b63);
+    --vurgu-yazi: var(--tg-theme-button-text-color, #ffffff);
+    --kutu: var(--tg-theme-secondary-bg-color, #eef2f7);
+    --hata: #d93025;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 18px 16px 28px; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--yazi); }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.alt { margin: 0 0 14px; color: var(--soluk); font-size: 13px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--soluk); margin: 14px 0 6px; }
+  label .zorunlu { color: var(--hata); }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  input, select, textarea { display: block; min-width: 0; max-width: 100%; width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 10px;
+                            border: 1px solid transparent; background: var(--kutu); color: var(--yazi); }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--vurgu); }
+  textarea { min-height: 84px; resize: vertical; }
+  #plaka, #ikamePlaka { text-transform: uppercase; letter-spacing: 1px; }
+  .secim { display: flex; gap: 8px; }
+  .secim button { flex: 1; min-width: 0; padding: 12px; border-radius: 10px; border: 1px solid transparent; font-size: 15px;
+                  background: var(--kutu); color: var(--yazi); }
+  .secim button.secili { background: var(--vurgu); color: var(--vurgu-yazi); }
+  .uyari { color: var(--hata); font-size: 13px; margin-top: 6px; min-height: 0; }
+  .gizli { display: none; }
+  .oneri { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .oneri button { padding: 8px 12px; border-radius: 16px; border: 1px solid var(--vurgu); background: transparent;
+                  color: var(--yazi); font-size: 15px; letter-spacing: 1px; }
+  .bilgi { color: var(--soluk); font-size: 13px; margin-top: 6px; }
+  #gonder { display: none; width: 100%; margin-top: 20px; padding: 14px; border: 0; border-radius: 12px;
+            font-size: 16px; background: var(--vurgu); color: var(--vurgu-yazi); }
+  #liste { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .kart { background: var(--kutu); border-radius: 10px; padding: 12px; cursor: pointer; }
+  .kart .ust { display: flex; justify-content: space-between; gap: 8px; letter-spacing: 0.5px; }
+  .ayrinti { margin-top: 8px; font-size: 14px; line-height: 1.5; }
+  .ayrinti .etiket { color: var(--soluk); }
+</style>
+</head>
+<body>
+<h1>Kayıtlar</h1>
+<p class="alt" id="alt">Serviste olan ve son günlerde servisten çıkan kayıtlar. Ayrıntı için kayda dokununuz.</p>
+
+<input id="filtre" placeholder="Plaka veya kayıt no ile arayınız" maxlength="12" autocomplete="off">
+<div id="liste"></div>
+<p class="bilgi">Bir kayda itiraz etmek için menüdeki <b>⚖️ İtiraz Et</b> düğmesini kullanınız.</p>
+
+<button id="gonder" type="button">Kapat</button>
+
+<script>
+  // Veriler adresin # kısmında gelir (sunucuya hiç gönderilmez); Telegram kendi parametrelerini ekleyebilir
+  function parametreler() {
+    const p = new URLSearchParams(location.search);
+    const h = location.hash.replace(/^#/, "").replace(/\?/g, "&");
+    for (const [k, v] of new URLSearchParams(h)) if (!p.has(k)) p.set(k, v);
+    return p;
+  }
+  // Bot #d=<JSON> ile gönderir: {"gun":30,"birimler":[...],"nedenler":[...],
+  //   "k":[[no, plaka, birimNo|metin, nedenNo|metin, giris, cikis, ikamePlaka, ikameTarihi, aciklama, itirazVar], ...]}
+  // Sadece görüntüleme: bota veri gönderilmez.
+  const tg0 = window.Telegram && Telegram.WebApp;
+  const tg = tg0 && tg0.platform && tg0.platform !== "unknown" ? tg0 : null;
+  const $ = id => document.getElementById(id);
+  let d = {};
+  try { d = JSON.parse(parametreler().get("d") || "{}"); } catch (e) { d = {}; }
+  const k = d.k || [], birimler = d.birimler || [], nedenler = d.nedenler || [];
+  if (d.gun) $("alt").textContent = "Serviste olan ve son " + d.gun + " günde servisten çıkan kayıtlar (" + k.length + "). Ayrıntı için kayda dokununuz.";
+  const tr = s => s ? s.split("-").reverse().join(".") : "-";
+  const no2 = n => String(n).padStart(2, "0");
+  const ad = (liste, v) => typeof v === "number" ? (liste[v] || "-") : (v || "-");
+  const gunFarki = (a, b) => Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 86400000);
+  const yaz = (el, t) => { el.textContent = t; return el; };
+
+  function kart(r) {
+    const kutu = document.createElement("div"); kutu.className = "kart";
+    const ust = document.createElement("div"); ust.className = "ust";
+    ust.appendChild(yaz(document.createElement("b"), no2(r[0]) + " · " + r[1]));
+    ust.appendChild(yaz(document.createElement("span"), r[5] ? "🟢 Çıktı" : "🟠 Serviste"));
+    kutu.appendChild(ust);
+    const ayr = document.createElement("div"); ayr.className = "ayrinti gizli";
+    const satirlar = [
+      ["Birim", ad(birimler, r[2])], ["Servis nedeni", ad(nedenler, r[3])],
+      ["Servise giriş", tr(r[4])], ["Servisten çıkış", tr(r[5])], ["Süre", gunFarki(r[4], r[5]) + " gün"],
+      ["İkame araç", r[6] ? r[6] + " (" + tr(r[7]) + ")" : "Verilmedi"], ["Açıklama", r[8] || "-"]];
+    if (r[9]) satirlar.push(["İtiraz", "⚖️ Karar bekleyen itiraz var"]);
+    for (const [b, v] of satirlar) {
+      const s = document.createElement("div");
+      s.appendChild(yaz(document.createElement("span"), b + ": ")); s.lastChild.className = "etiket";
+      s.appendChild(yaz(document.createElement("span"), v));
+      ayr.appendChild(s);
+    }
+    kutu.appendChild(ayr);
+    kutu.onclick = () => ayr.classList.toggle("gizli");
+    return kutu;
+  }
+
+  function listele() {
+    const f = $("filtre").value.toLocaleUpperCase("tr-TR").replace(/[^0-9A-Z]/g, ""), l = $("liste");
+    l.innerHTML = "";
+    const es = k.filter(r => !f || r[1].includes(f) || no2(r[0]) === f.padStart(2, "0"));
+    for (const r of es) l.appendChild(kart(r));
+    if (!es.length) l.appendChild(yaz(document.createElement("p"), k.length ? "Eşleşen kayıt yok." : "Gösterilecek kayıt yok.")).className = "bilgi";
+  }
+  $("filtre").addEventListener("input", listele);
+  listele();
+
+  if (tg) {
+    tg.ready(); tg.expand();
+    tg.MainButton.setText("Kapat").show().onClick(() => tg.close());
+  } else {
+    $("gonder").style.display = "block"; $("gonder").onclick = () => window.close();
+  }
+</script>
+</body>
+</html>
