@@ -49,6 +49,12 @@
 <h1>Kayıt Silme</h1>
 <p class="alt">Lütfen silinecek kaydı seçerek <b>Sil</b> düğmesine basınız. Silme işlemi iki kez onaylanır: önce bu formda, sonra sohbette kaydın tamamı gösterilerek.</p>
 
+<label>Kayıt türü</label>
+<div class="secim" id="tur">
+  <button type="button" data-v="servis" class="secili">Servis kaydı</button>
+  <button type="button" data-v="lastik">🛞 Lastik kaydı</button>
+</div>
+
 <label for="filtre">Kayıt <span class="zorunlu">*</span></label>
 <input id="filtre" placeholder="Listeyi daraltmak için plaka veya kayıt no yazınız" maxlength="12" autocomplete="off">
 <select id="kayit" size="8" style="margin-top:8px"></select>
@@ -66,16 +72,26 @@
     return p;
   }
   // Bot son kayıtları #k=<JSON> ile gönderir: [[no, plaka, giris, cikis, ikamePlaka], ...] (tarihler YYYY-MM-DD, yoksa "")
-  // Seçim bota JSON olarak gider: {"tur":"sil","kayit":no}; asıl silme sohbetteki "🗑 Evet, sil" onayıyla yapılır
+  // ve son lastik kayıtlarını &l=<JSON> ile: [[no, plaka, islem, tarih, km], ...]
+  // Seçim bota JSON olarak gider: {"tur":"sil","kayit":no} veya {"tur":"sil","lastik":no};
+  // asıl silme sohbetteki "🗑 Evet, sil" onayıyla yapılır
   const tg0 = window.Telegram && Telegram.WebApp;
   // Telegram içinde açıldıysa platform bilinir (menü düğmesiyle açılınca initData boş gelir, ona bakılmaz)
   const tg = tg0 && tg0.platform && tg0.platform !== "unknown" ? tg0 : null;
   const $ = id => document.getElementById(id);
-  let kayitlar = [];
-  try { kayitlar = JSON.parse(parametreler().get("k") || "[]"); } catch (e) { kayitlar = []; }
+  const oku = a => { try { return JSON.parse(parametreler().get(a) || "[]"); } catch (e) { return []; } };
+  const servisler = oku("k"), lastikler = oku("l");
+  let tur = "servis", kayitlar = servisler;
   const tr = s => s ? s.split("-").reverse().join(".") : "-";
   const no2 = n => String(n).padStart(2, "0");
-  const etiket = k => no2(k[0]) + " – " + k[1] + " (giriş " + tr(k[2]) + ", " + (k[3] ? "çıkış " + tr(k[3]) : "serviste") + ")";
+  const etiket = k => tur === "lastik"
+    ? "Lastik " + no2(k[0]) + " – " + k[1] + " (" + k[2] + ", " + tr(k[3]) + ", " + k[4] + " km)"
+    : no2(k[0]) + " – " + k[1] + " (giriş " + tr(k[2]) + ", " + (k[3] ? "çıkış " + tr(k[3]) : "serviste") + ")";
+  for (const b of $("tur").children) b.onclick = () => {
+    tur = b.dataset.v; kayitlar = tur === "lastik" ? lastikler : servisler;
+    for (const x of $("tur").children) x.classList.toggle("secili", x === b);
+    $("kayit").value = ""; listele();
+  };
 
   function listele() {
     const f = $("filtre").value.toLocaleUpperCase("tr-TR").replace(/[^0-9A-Z]/g, ""), sel = $("kayit"), once = sel.value;
@@ -88,7 +104,7 @@
   }
   function bilgiGoster() {
     const k = kayitlar.find(x => String(x[0]) === $("kayit").value);
-    $("bilgi").textContent = k ? "Seçilen: " + etiket(k) + (k[4] ? " – ikame " + k[4] : "") : "";
+    $("bilgi").textContent = k ? "Seçilen: " + etiket(k) + (tur === "servis" && k[4] ? " – ikame " + k[4] : "") : "";
     $("u_kayit").textContent = "";
   }
   $("filtre").addEventListener("input", listele);
@@ -104,8 +120,10 @@
     }
     if (!tg) { alert("Bu form Telegram içinden açılmalıdır."); return; }
     // 1. onay: formda; 2. onay: sohbette kaydın tamamı gösterilerek
-    tg.showConfirm("Kayıt " + no2(k[0]) + " – " + k[1] + " silinsin mi?\nSohbette kaydın tamamı gösterilip bir kez daha onayınız istenecektir.",
-                   ok => { if (ok) tg.sendData(JSON.stringify({ tur: "sil", kayit: k[0] })); });
+    const ad = (tur === "lastik" ? "Lastik " : "Kayıt ") + no2(k[0]) + " – " + k[1];
+    tg.showConfirm(ad + " silinsin mi?\nSohbette kaydın tamamı gösterilip bir kez daha onayınız istenecektir.",
+                   ok => { if (ok) tg.sendData(JSON.stringify(tur === "lastik" ? { tur: "sil", lastik: k[0] }
+                                                                               : { tur: "sil", kayit: k[0] })); });
   }
 
   if (tg) {
