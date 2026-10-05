@@ -42,7 +42,7 @@
                   color: var(--yazi); font-size: 15px; letter-spacing: 1px; }
   #gonder { display: none; width: 100%; margin-top: 20px; padding: 14px; border: 0; border-radius: 12px;
             font-size: 16px; background: var(--vurgu); color: var(--vurgu-yazi); }
-  #fotoSatir { display: flex; align-items: center; gap: 8px; font-weight: 400; margin-top: 16px; }
+  #fotoNot { margin-top: 16px; }
 </style>
 </head>
 <body>
@@ -73,9 +73,8 @@
 <label for="aciklama">Açıklama (isteğe bağlı)</label>
 <textarea id="aciklama" maxlength="500" placeholder="Örn: Sağ ön lastik patlak, yama yapıldı."></textarea>
 
-<label id="fotoSatir">
-  <input type="checkbox" id="foto" style="width:auto"> 📷 Fotoğraf ekleyeceğim (Kaydet'e bastıktan sonra sohbette istenir)
-</label>
+<p class="bilgi" id="fotoNot">📷 <b>Fotoğraf zorunludur.</b> Kaydet'e bastıktan sonra sohbette <b>Fotoğraf ekle</b>
+  düğmesiyle lastiğin fotoğrafını göndermeniz istenecektir; fotoğraf gönderilmeden kayıt tamamlanmaz.</p>
 
 <button id="gonder" type="button">Kaydet</button>
 
@@ -89,7 +88,7 @@
   }
   // Bot #f=PLAKA,PLAKA,... ile öneri plakalarını gönderir.
   // Kayıt bota JSON olarak gider: {"tur":"lastik","plaka":"...","islem":"Tamirat|Değişim","km":"125400",
-  //                               "tarih":"YYYY-MM-DD","aciklama":"...","foto":true|false}
+  //                               "tarih":"YYYY-MM-DD","aciklama":"..."}  (fotoğraf sonra sohbetten, zorunlu)
   const tg0 = window.Telegram && Telegram.WebApp;
   const tg = tg0 && tg0.platform && tg0.platform !== "unknown" ? tg0 : null;
   const $ = id => document.getElementById(id);
@@ -130,7 +129,7 @@
     if (!islem) { $("u_islem").textContent = "Lütfen Tamirat veya Değişim seçiniz."; ok = false; }
     if (!/^[0-9]{1,7}$/.test(km) || +km === 0) { $("u_km").textContent = "Kilometre zorunludur (sadece rakam)."; ok = false; }
     if (!tarih || tarih > $("tarih").max) { $("u_tarih").textContent = "Geçerli bir tarih seçiniz (ileri tarih olamaz)."; ok = false; }
-    return ok ? { tur: "lastik", plaka, islem, km, tarih, aciklama: $("aciklama").value.trim(), foto: $("foto").checked } : null;
+    return ok ? { tur: "lastik", plaka, islem, km, tarih, aciklama: $("aciklama").value.trim() } : null;
   }
 
   function gonder() {
