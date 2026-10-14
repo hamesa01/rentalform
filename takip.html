@@ -35,10 +35,9 @@
   .sekme button.secili { background: var(--vurgu); color: var(--vurgu-yazi); }
   .uyari { color: var(--hata); font-size: 13px; margin-top: 6px; }
   .bilgi { color: var(--soluk); font-size: 13px; margin-top: 6px; }
-  .oneri, .secili { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .oneri button, .secili button { padding: 8px 12px; border-radius: 16px; border: 1px solid var(--vurgu);
-                                  background: transparent; color: var(--yazi); font-size: 15px; letter-spacing: 1px; }
-  .secili button { background: var(--vurgu); color: var(--vurgu-yazi); }
+  .oneri { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .oneri button { padding: 8px 12px; border-radius: 16px; border: 1px solid var(--vurgu);
+                  background: transparent; color: var(--yazi); font-size: 15px; letter-spacing: 1px; }
   #ekle { margin-top: 8px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--vurgu);
           background: transparent; color: var(--yazi); font-size: 15px; display: none; }
   .liste label { display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px; border-radius: 10px;
@@ -48,6 +47,16 @@
   .liste .tarih { margin-left: auto; color: var(--soluk); font-size: 13px; }
   #gonder { display: none; width: 100%; margin-top: 20px; padding: 14px; border: 0; border-radius: 12px;
             font-size: 16px; background: var(--vurgu); color: var(--vurgu-yazi); }
+  .arac { margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: var(--kutu); }
+  .arac .ust { display: flex; align-items: center; justify-content: space-between; }
+  .arac .plaka { font-weight: 600; letter-spacing: 1px; font-size: 16px; }
+  .arac .sil { border: 0; background: transparent; color: var(--hata); font-size: 14px; padding: 4px 6px; }
+  .arac select, .arac input { display: block; width: 100%; min-width: 0; max-width: 100%; margin-top: 8px; font: inherit;
+                              font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid var(--soluk);
+                              background: var(--bg); color: var(--yazi); }
+  .arac input { text-transform: none; letter-spacing: 0; }
+  .arac.eksik select { border-color: var(--hata); }
+  .arac .gizli { display: none; }
   .gizli { display: none; }
 </style>
 </head>
@@ -67,9 +76,9 @@
   <div class="oneri" id="oneri"></div>
   <button id="ekle" type="button"></button>
   <div class="bilgi" id="b_plaka"></div>
-  <label>Seçilen araçlar (<span id="adet">0</span>)</label>
-  <div class="secili" id="secili"></div>
-  <div class="bilgi" id="bos">Henüz araç seçilmedi. Kaldırmak için seçili plakaya dokununuz.</div>
+  <label>Seçilen araçlar ve bağlı oldukları birim (<span id="adet">0</span>)</label>
+  <div id="secili"></div>
+  <div class="bilgi" id="bos">Henüz araç seçilmedi. Her araç için bağlı olduğu birimi seçiniz.</div>
 </div>
 
 <div id="kapat" class="gizli">
@@ -90,8 +99,9 @@
     for (const [k, v] of new URLSearchParams(h)) if (!p.has(k)) p.set(k, v);
     return p;
   }
-  // Bot gönderir: b=1 (arıza bildirebilir), f=PLAKA,... (filo, öneri), a=ID:PLAKA,... (açık arızalar)
-  // Bota JSON gider: {"tur":"takip","islem":"bildir","plakalar":[...]} veya {"tur":"takip","islem":"kapat","idler":[...]}
+  // Bot gönderir: b=1 (arıza bildirebilir), f=PLAKA,... (filo, öneri), u=["birim",...] (JSON), a=ID:PLAKA,... (açık arızalar)
+  // Bota JSON gider: {"tur":"takip","islem":"bildir","araclar":[{"plaka":"...","birim":"..."}]}
+  //              veya {"tur":"takip","islem":"kapat","idler":[...]}
   const tg0 = window.Telegram && Telegram.WebApp;
   const tg = tg0 && tg0.platform && tg0.platform !== "unknown" ? tg0 : null;
   const $ = id => document.getElementById(id);
@@ -102,8 +112,12 @@
                                    .filter(x => /^[0-9]+$/.test(x[0]));
   const PLAKA = /^(0[1-9]|[1-7][0-9]|8[01])[A-Z]{1,3}[0-9]{2,4}$/;
   const EN_COK = 30;
+  let birimler = [];
+  try { birimler = JSON.parse(prm.get("u") || "[]"); } catch (e) { birimler = []; }
+  const DIGER = "Diğer (listede yok)";
   const temiz = s => s.toLocaleUpperCase("tr-TR").replace(/[^0-9A-Z]/g, "");
-  const secilen = [];
+  const secilen = [];  // [{plaka, birim, diger}]
+  const secili = x => secilen.some(a => a.plaka === x);
   let islem = "";
 
   function uyar(m) { $("uyari").textContent = m || ""; }
@@ -121,32 +135,45 @@
   // --- Arıza bildir
   function ciz() {
     const kutu = $("secili"); kutu.innerHTML = "";
-    for (const x of secilen) {
-      const b = document.createElement("button"); b.type = "button"; b.textContent = x + " ✕";
-      b.onclick = () => { secilen.splice(secilen.indexOf(x), 1); ciz(); oner(); };
-      kutu.appendChild(b);
+    for (const a of secilen) {
+      const d = document.createElement("div"); d.className = "arac";
+      d.innerHTML = '<div class="ust"><span class="plaka"></span><button type="button" class="sil">✕ Kaldır</button></div>' +
+                    '<select></select><input class="gizli" placeholder="Birim adını yazınız" maxlength="60">';
+      d.querySelector(".plaka").textContent = a.plaka;
+      d.querySelector(".sil").onclick = () => { secilen.splice(secilen.indexOf(a), 1); ciz(); oner(); };
+      const s = d.querySelector("select"), g = d.querySelector("input");
+      const bos = document.createElement("option"); bos.value = ""; bos.textContent = "Birim seçiniz *"; s.appendChild(bos);
+      for (const b of birimler.concat([DIGER])) {
+        const o = document.createElement("option"); o.value = o.textContent = b; s.appendChild(o);
+      }
+      s.value = a.birim; g.value = a.diger; g.classList.toggle("gizli", a.birim !== DIGER);
+      s.onchange = () => { a.birim = s.value; g.classList.toggle("gizli", s.value !== DIGER); d.classList.remove("eksik");
+                           if (s.value === DIGER) g.focus(); };
+      g.oninput = () => { a.diger = g.value; };
+      kutu.appendChild(d);
     }
     $("adet").textContent = secilen.length;
     $("bos").style.display = secilen.length ? "none" : "block";
   }
   function sec(x) {
     uyar("");
-    if (secilen.includes(x)) return;
+    if (secili(x)) return;
     if (secilen.length >= EN_COK) { uyar("Tek seferde en fazla " + EN_COK + " araç bildirilebilir."); return; }
-    secilen.push(x); $("plaka").value = ""; ciz(); oner(); $("plaka").focus();
+    secilen.push({ plaka: x, birim: "", diger: "" }); $("plaka").value = ""; ciz(); oner();
+    const son = $("secili").lastElementChild; son && son.querySelector("select").focus();
   }
   function oner() {
     const p = temiz($("plaka").value), kutu = $("oneri");
     kutu.innerHTML = ""; $("b_plaka").textContent = ""; $("ekle").style.display = "none";
     if (p.length < 2) return;
     const acikP = acik.map(x => x[1]);
-    for (const x of filo.filter(x => x.includes(p) && !secilen.includes(x)).slice(0, 8)) {
+    for (const x of filo.filter(x => x.includes(p) && !secili(x)).slice(0, 8)) {
       const b = document.createElement("button"); b.type = "button";
       b.textContent = x + (acikP.includes(x) ? " (arızalı)" : "");
       b.onclick = () => sec(x);
       kutu.appendChild(b);
     }
-    if (PLAKA.test(p) && !filo.includes(p) && !secilen.includes(p)) {  // filo listesi tam değil: elle ekleme
+    if (PLAKA.test(p) && !filo.includes(p) && !secili(p)) {  // filo listesi tam değil: elle ekleme
       $("ekle").textContent = "➕ " + p + " ekle"; $("ekle").style.display = "inline-block";
       $("ekle").onclick = () => sec(p);
       if (filo.length) $("b_plaka").textContent = "Bu plaka filo listesinde yok.";
@@ -155,7 +182,7 @@
   $("plaka").addEventListener("input", oner);
   $("plaka").addEventListener("keydown", e => {
     if (e.key !== "Enter") return;
-    const p = temiz($("plaka").value), es = filo.filter(x => x.includes(p) && !secilen.includes(x));
+    const p = temiz($("plaka").value), es = filo.filter(x => x.includes(p) && !secili(x));
     if (PLAKA.test(p)) sec(p); else if (p.length >= 2 && es.length === 1) sec(es[0]);
   });
 
@@ -174,7 +201,14 @@
     let veri, soru;
     if (islem === "bildir") {
       if (!secilen.length) { uyar("En az bir araç seçiniz."); return hata(); }
-      veri = { tur: "takip", islem: "bildir", plakalar: secilen };
+      const araclar = secilen.map(a => ({ plaka: a.plaka, birim: a.birim === DIGER ? a.diger.trim() : a.birim }));
+      const eksik = araclar.filter(a => !a.birim).map(a => a.plaka);
+      if (eksik.length) {
+        for (const d of $("secili").children)
+          d.classList.toggle("eksik", eksik.includes(d.querySelector(".plaka").textContent));
+        uyar("Birim seçilmedi: " + eksik.join(", ")); return hata();
+      }
+      veri = { tur: "takip", islem: "bildir", araclar };
       soru = secilen.length + " araç takip cihazı arızalı olarak gruba bildirilsin mi?";
     } else {
       const idler = [...$("liste").querySelectorAll("input:checked")].map(x => x.value);
