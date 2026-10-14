@@ -62,8 +62,8 @@
 <div id="bildir" class="gizli">
   <p class="alt">Takip cihazı arızalı araçları seçip <b>Bildir</b>'e basınız. Gruba “Servise yönlendiriniz”
     bildirimi gider. Servis kaydı açılmaz.</p>
-  <label for="plaka">Plaka yazınız</label>
-  <input id="plaka" type="text" placeholder="Örn: 01 ABC 123" autocomplete="off" maxlength="12">
+  <label for="plaka">Plaka ara / ekle</label>
+  <input id="plaka" type="text" placeholder="Plaka veya son rakamları" autocomplete="off" maxlength="12">
   <div class="oneri" id="oneri"></div>
   <button id="ekle" type="button"></button>
   <div class="bilgi" id="b_plaka"></div>
@@ -90,7 +90,7 @@
     for (const [k, v] of new URLSearchParams(h)) if (!p.has(k)) p.set(k, v);
     return p;
   }
-  // Bot gönderir: b=1 (arıza bildirebilir), a=ID:PLAKA,... (açık arızalar, en çok 30)
+  // Bot gönderir: b=1 (arıza bildirebilir), f=PLAKA,... (filo, öneri), a=ID:PLAKA,... (açık arızalar)
   // Bota JSON gider: {"tur":"takip","islem":"bildir","plakalar":[...]} veya {"tur":"takip","islem":"kapat","idler":[...]}
   const tg0 = window.Telegram && Telegram.WebApp;
   const tg = tg0 && tg0.platform && tg0.platform !== "unknown" ? tg0 : null;
@@ -154,8 +154,9 @@
   }
   $("plaka").addEventListener("input", oner);
   $("plaka").addEventListener("keydown", e => {
-    const p = temiz($("plaka").value);
-    if (e.key === "Enter" && PLAKA.test(p)) sec(p);
+    if (e.key !== "Enter") return;
+    const p = temiz($("plaka").value), es = filo.filter(x => x.includes(p) && !secilen.includes(x));
+    if (PLAKA.test(p)) sec(p); else if (p.length >= 2 && es.length === 1) sec(es[0]);
   });
 
   // --- Onarıldı (açık arızalar)
