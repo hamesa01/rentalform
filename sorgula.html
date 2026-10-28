@@ -74,7 +74,9 @@
   const $ = id => document.getElementById(id);
   const plakaDuzelt = s => s.toLocaleUpperCase("tr-TR").replace(/[^0-9A-Z]/g, "");
   const kayitli = (q.get("p") || "").split(",").filter(Boolean);  // kaydı olan plakalar (en yeni önce)
-  const filo = (q.get("f") || "").split(",").filter(Boolean);     // kaydı olmayan filo plakaları
+  // Sıkıştırılmış plaka listesi ("~" + her plaka: öncekiyle ortak baş harf sayısı + kalan); eski düz liste de okunur
+  const plakaAc = s => { let o = ""; return s.startsWith("~") ? s.slice(1).split(",").filter(Boolean).map(x => o = o.slice(0, +x[0]) + x.slice(1)) : s.split(",").filter(Boolean); };
+  const filo = plakaAc(q.get("f") || "");     // kaydı olmayan filo plakaları
   const plakalar = kayitli.concat(filo);
 
   function plakaOner() {

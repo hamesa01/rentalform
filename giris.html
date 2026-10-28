@@ -101,7 +101,9 @@
   const q = parametreler();
   let d = {};
   try { d = JSON.parse(q.get("d") || "{}"); } catch (e) { d = {}; }
-  const filo = (q.get("f") || "").split(",").filter(Boolean);  // filo plakaları (liste tam değil: elle giriş de açık)
+  // Sıkıştırılmış plaka listesi ("~" + her plaka: öncekiyle ortak baş harf sayısı + kalan); eski düz liste de okunur
+  const plakaAc = s => { let o = ""; return s.startsWith("~") ? s.slice(1).split(",").filter(Boolean).map(x => o = o.slice(0, +x[0]) + x.slice(1)) : s.split(",").filter(Boolean); };
+  const filo = plakaAc(q.get("f") || "");  // filo plakaları (liste tam değil: elle giriş de açık)
   const birimler = d.birimler || [], nedenler = d.nedenler || [], zorunlu = d.zorunlu || [];
   const DIGER = "Diğer (listede yok)";
   const $ = id => document.getElementById(id);
